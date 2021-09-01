@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
-import numpy as np
 import pretty_midi
 import os
-import json, ast
+import json
 import shutil
 import re
-import sys
 from chord_extractor.extractors import Chordino
 
 MIDI_PATH = '/home/guimaj/Documentos/'
@@ -54,19 +52,35 @@ def get_midi_notes(instrument):
 
     return notes
 
+
+def writeMidi(notes,midi_id,file_path):
+    # Create a PrettyMIDI object
+    pianoMidi = pretty_midi.PrettyMIDI()
+    # Create an Instrument instance for a cello instrument
+    piano_program = pretty_midi.instrument_name_to_program('Acoustic Grand Piano')
+    piano = pretty_midi.Instrument(program=piano_program)
+    
+    # Add the piano instrument to the PrettyMIDI object
+    pianoMidi.instruments.append(piano)
+    
+    pianoMidi.instruments[0].notes = notes
+
+    midi_path = os.path.join(file_path, midi_id) + "melody.mid"
+  
+    # Write out the MIDI data
+    pianoMidi.write(midi_path)
+
 def get_midi_instruments(instruments):
 
     instrument_list = []
 
     for instrument in instruments:
-        instrument_dict = dict({
-            "nome": pretty_midi.program_to_instrument_name(instrument.program),
-            "notas": []
-        })
-
         notas = get_midi_notes(instrument)
 
-        instrument_dict["notas"].append(notas)
+        instrument_dict = dict({
+            "nome": pretty_midi.program_to_instrument_name(instrument.program),
+            "notas": notas
+        })
         instrument_list.append(instrument_dict)
 
     return instrument_list
@@ -81,7 +95,7 @@ def get_midi_lyrics(midi_file):
     for start, end in zip(lines[:-1], lines[1:]):
         for lyric in midi_file.lyrics[start:end]:
             if lyric.text != '\r':    
-                texto = re.sub('[.,:;@$#=!\/]',"",lyric.text).strip().rstrip('\x00').strip()   
+                texto = re.sub('[.,:;@$#=!\/?''*&()_]',"",lyric.text).strip().rstrip('\x00').strip()   
                 if texto != '':      
                     lyric_dict = dict({
                         "texto": texto,
@@ -120,21 +134,38 @@ def get_midi_info(midi_file, midi_id):
         "instrumentos": midi_instruments,
         "letra": midi_lyrics
     })  
-    return midi_info                    
+    return midi_info 
+
+def get_midi_lyrics_object(midi_file, midi_id):
+    midi_lyrics = get_midi_lyrics(midi_file)   
+    midi_lyrics_object = dict({
+        "midi_id": midi_id,
+        "letra": midi_lyrics
+    })   
+    return midi_lyrics_object        
 
 def export_midi_chords(midi_id, file_path):
     midi_chords = get_midi_chords(file_path, midi_id)
     file_path = os.path.join(file_path, "acordes.json")
     export_json_file(midi_chords,file_path)
 
+def export_midi_lyrics(midi_file, midi_id, file_path):
+    midi_lyrics = get_midi_lyrics_object(midi_file, midi_id)
+    file_path = os.path.join(file_path, "letra.json")
+    export_json_file(midi_lyrics,file_path)
+
+def export_midi_melody(midi_file, midi_id, file_path):
+    midi_melody = get_midi_melody(midi_file, midi_id, file_path)
+    file_path = os.path.join(file_path, "melodia.json")
+    export_json_file(midi_melody,file_path)
+
 def export_midi_infos(midi_file, midi_id, file_path):
     midi_info = get_midi_info(midi_file, midi_id)
-    file_path = os.path.join(file_path, "letras.json")
+    file_path = os.path.join(file_path, "midi_infos.json")
     export_json_file(midi_info,file_path)
 
-
 def get_midi_with_lyrics(scores):
-
+    
     while len(scores) > 0:
         try:
             msd_id, matches = scores.popitem()
@@ -156,8 +187,54 @@ def get_midi_with_lyrics(scores):
                 export_lyric_file(aligned_midi_path, os.path.join(MIDI_WITH_LYRICS_PATH, midi_md5))
                 export_midi_chords(midi_md5, os.path.join(MIDI_WITH_LYRICS_PATH,midi_md5))
                 export_midi_infos(midi_file, midi_md5, os.path.join(MIDI_WITH_LYRICS_PATH,midi_md5)) 
+                export_midi_melody(midi_file, midi_md5, os.path.join(MIDI_WITH_LYRICS_PATH,midi_md5))
+                export_midi_lyrics(midi_file, midi_md5, os.path.join(MIDI_WITH_LYRICS_PATH,midi_md5))
+                
         except:
             print("ocorreu um erro ao tentar recuperar os dados do arquivo MIDI")
+
+def most_frequent(instrument_indexes):
+    counter = 0
+    index_most_frequeny = instrument_indexes[0]
+     
+    for instrument_index in instrument_indexes:
+        curr_frequency = instrument_indexes.count(instrument_index)
+        if(curr_frequency > counter):
+            counter = curr_frequency
+            index_most_frequeny = instrument_index
+ 
+    return index_most_frequeny
+
+def get_midi_melody(midi_file, midi_id, file_path):
+
+    lyrics = []
+
+    for lyric in midi_file.lyrics:
+        lyrics.append(lyric)
+
+    melody_instrument = midi_file.instruments[get_melody_instrument(midi_file,lyrics)]
+    melody_notes = get_midi_notes(melody_instrument)
+    
+    midi_melody = dict({
+        "midi_id": midi_id,
+        "melodia": melody_notes
+    })
+
+    writeMidi(melody_instrument.notes, midi_id, file_path)
+
+    return midi_melody
+
+
+def get_melody_instrument(midi_file, lyrics):
+    instrument_indexes = []
+
+    for instrument in midi_file.instruments:
+        for note in instrument.notes:
+            for lyric in lyrics:
+                if note.start == lyric.time:
+                    instrument_indexes.append(midi_file.instruments.index(instrument))
+    
+    return most_frequent(instrument_indexes)
 
 def main():
     scores = get_score_file()
