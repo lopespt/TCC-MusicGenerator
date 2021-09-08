@@ -229,10 +229,15 @@ def get_melody_instrument(midi_file, lyrics):
     instrument_indexes = []
 
     for instrument in midi_file.instruments:
-        for note in instrument.notes:
+        for j in range(len(instrument.notes)):
             for lyric in lyrics:
-                if note.start == lyric.time:
-                    instrument_indexes.append(midi_file.instruments.index(instrument))
+                if instrument.is_drum == False: 
+                    if instrument.notes[j].start >= lyric.time - 0.01 and instrument.notes[j].start <= lyric.time + 0.01:
+                        if j < len(instrument.notes) - 1 and instrument.notes[j].end < instrument.notes[j+1].start:
+                            if instrument.notes[j].start >= instrument.notes[j+1].start - 0.003 and instrument.notes[j].start <= instrument.notes[j+1].start + 0.003:
+                                pass
+                            else:
+                                instrument_indexes.append(midi_file.instruments.index(instrument))
     
     return most_frequent(instrument_indexes)
 
