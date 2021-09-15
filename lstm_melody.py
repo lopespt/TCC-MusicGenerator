@@ -1,7 +1,9 @@
 from gensim.models import KeyedVectors
+from keras import activations
 from keras.models import Model, Sequential
 from keras.layers import LSTM
 from keras.layers import Dense
+from keras.layers import Input
 from sklearn.model_selection import train_test_split 
 import numpy
 import os
@@ -103,43 +105,62 @@ def get_supervised_vector(lyrics_vector, melody_vector):
     for word in lyrics_vector:
         for melody in melody_vector:
             if word["tempo"] >= melody["inicio"] and word["tempo"] <= melody["fim"] or word["tempo"] <= melody["inicio"]:
-                supervided_vector = [melody["pitch"],melody["inicio"],melody["fim"]]
+                melody_normalized = normalize_data(melody)
+                supervided_vector = [melody_normalized["pitch"],melody_normalized["inicio"],melody_normalized["fim"]]
                 supervised_vectors.append(supervided_vector)
                 break
+
     return supervised_vectors
 
-# separa os conjuntos de dados
-def pre_process(embedding_vectors, supervised_vectors):
+
+def normalize_data(melody):
+    pitch = melody["pitch"] = melody["pitch"]/88
+    return dict({
+        "pitch": pitch,
+        "inicio": melody["inicio"],
+        "fim": melody["fim"]
+    })
+    
+# Separa o dataset em treino e teste, necessita do reshape para funcionar, onde o vetor tem a seguinte forma [batch_size,timestep,n_features]
+def pre_process(embedding_vectors,supervised_vectors):
+    
     embedding_vectors = numpy.array(embedding_vectors)
     supervised_vectors = numpy.array(supervised_vectors)
+    
+    x_train, x_test, y_train, y_test = train_test_split(embedding_vectors,supervised_vectors, test_size = 0.14285714285)
 
-    print(embedding_vectors.shape, supervised_vectors.shape)
+    x_train = numpy.reshape(x_train,(7,6,128))
+    x_test = numpy.reshape(x_test,(1,7,128))
+    y_train = numpy.reshape(y_train,(7,6,3))
+    y_test = numpy.reshape(y_test,(1,7,3))
 
-    X_train, X_test, Y_train, Y_test = train_test_split(embedding_vectors,supervised_vectors, test_size = 0.20, random_state = 4)
-
-    X_train = numpy.reshape(X_train, (X_train.shape[0], 1, X_train.shape[1]))
-    X_test = numpy.reshape(X_test, (X_test.shape[0], 1, X_test.shape[1]))
-    Y_train = numpy.reshape(Y_train, (Y_train.shape[0], 1, Y_train.shape[1]))
-    Y_test = numpy.reshape(Y_test, (Y_test.shape[0], 1, Y_test.shape[1]))
-
-    return X_train,X_test,Y_train,Y_test
-
-
-def lstm_model(supervised_vectors, embedding_vectors):
+    return x_train,x_test,y_train,y_test
  
-    model = Sequential()
-    model.add(LSTM(3, batch_input_shape=(None,128,1), return_sequences=True))
-    model.add(Dense(1, activation='linear'))
-    
-    model.compile(loss='mse', optimizer='adam')
-    
-    X_train,X_test,Y_train,Y_test = pre_process(supervised_vectors,embedding_vectors)
+# Cria o modelo lstm com base na dimensão de saída, timesteps, n_features e batch-size, caso não queira especificar o tamanho do batch, utilizar None, se for utilizar
+# o tamanho do batch, a divisao da quantidade de timesteps pelo tamanho de cada batch deve ser exata
+def lstm_model(output_units,n_timesteps, n_features,batch_size, embedding_vectors, supervised_vectors):
 
-    model.fit(X_train, 
-              Y_train, 
-              validation_data=(X_test, Y_test),
-              epochs=50)
-   
+    
+    model = Sequential()
+    model.add(LSTM(output_units, return_sequences=True,input_shape=(n_timesteps, n_features),
+             batch_input_shape=(batch_size, n_timesteps, n_features)))
+    model.compile(loss='mse',
+                  optimizer='adam',
+                  metrics=['accuracy'])
+
+    model.summary()
+    
+    x_train,x_test,y_train,y_test = pre_process(embedding_vectors, supervised_vectors)
+    
+    model.fit(x_train, 
+              y_train, 
+              batch_size=batch_size, 
+              epochs=50, 
+              shuffle=False, 
+              validation_data=(x_test, y_test))
+
+    score = model.evaluate(x_test, y_test, batch_size=batch_size, verbose=1)
+    print(score)
 
 # retorna o vetor numerico de uma determinada letra
 def get_word_embedding_vector(lyrics_embedding_vector):
@@ -152,11 +173,8 @@ def get_word_embedding_vector(lyrics_embedding_vector):
     return word_embedding_vector
     
 
-
 keyed_vectors = get_word2Vec_model("/home/guimaj/Documentos/tcc/lyrics-vectors.kv") #path contendo o modelo word2vec exportado
 data = get_all_lyrics_and_melody("/home/guimaj/Documentos/tcc/midi_teste") #path contendo as pastas dos midis extraidos
 supervised_vectors = get_all_supervised_vectors(data)
-print(len(supervised_vectors))
 embedding_vectors  = get_all_embedding_vectors(data,keyed_vectors)
-
-lstm_model(supervised_vectors, embedding_vectors)
+lstm_model(3,6,128,7, embedding_vectors, supervised_vectors)
