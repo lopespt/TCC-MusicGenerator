@@ -25,7 +25,7 @@ def get_all_lyrics_and_melody(midi_path_dir):
     for dir in os.listdir(midi_path_dir):
 
         midi_folder_path = os.path.join(midi_path_dir,dir)
-        print(midi_folder_path)
+        
         for file in os.listdir(midi_folder_path):
 
             if file == "letra.json":
@@ -113,6 +113,16 @@ def get_supervised_vector(lyrics_vector, melody_vector):
     return supervised_vectors
 
 
+# retorna o vetor numerico de uma determinada letra
+def get_word_embedding_vector(lyrics_embedding_vector):
+
+    word_embedding_vector = []
+
+    for embedding_element in lyrics_embedding_vector:
+        word_embedding_vector.append(embedding_element["vector"])
+
+    return word_embedding_vector
+
 def normalize_data(melody):
     pitch = melody["pitch"] = melody["pitch"]/88
     return dict({
@@ -121,26 +131,28 @@ def normalize_data(melody):
         "fim": melody["fim"]
     })
     
-# Separa o dataset em treino e teste, necessita do reshape para funcionar, onde o vetor tem a seguinte forma [batch_size,timestep,n_features]
+
 def pre_process(embedding_vectors,supervised_vectors):
     
     embedding_vectors = numpy.array(embedding_vectors)
     supervised_vectors = numpy.array(supervised_vectors)
     
-    x_train, x_test, y_train, y_test = train_test_split(embedding_vectors,supervised_vectors, test_size = 0.14285714285)
+    print(embedding_vectors.shape, supervised_vectors.shape)
 
-    x_train = numpy.reshape(x_train,(7,6,128))
-    x_test = numpy.reshape(x_test,(1,7,128))
-    y_train = numpy.reshape(y_train,(7,6,3))
-    y_test = numpy.reshape(y_test,(1,7,3))
+    x_train, x_test, y_train, y_test = train_test_split(embedding_vectors,supervised_vectors, test_size = 0.5)
+
+    x_train = numpy.reshape(x_train,(1,x_train.shape[0],x_train.shape[1]))
+    y_train = numpy.reshape(y_train,(1,y_train.shape[0],y_train.shape[1]))
+    x_test = numpy.reshape(x_test,(1,x_test.shape[0],x_test.shape[1]))
+    y_test = numpy.reshape(y_test,(1,y_test.shape[0],y_test.shape[1]))
+
+    print(x_train.shape, y_train.shape, x_test.shape, y_test.shape)
 
     return x_train,x_test,y_train,y_test
  
-# Cria o modelo lstm com base na dimensão de saída, timesteps, n_features e batch-size, caso não queira especificar o tamanho do batch, utilizar None, se for utilizar
-# o tamanho do batch, a divisao da quantidade de timesteps pelo tamanho de cada batch deve ser exata
+
 def lstm_model(output_units,n_timesteps, n_features,batch_size, embedding_vectors, supervised_vectors):
 
-    
     model = Sequential()
     model.add(LSTM(output_units, return_sequences=True,input_shape=(n_timesteps, n_features),
              batch_input_shape=(batch_size, n_timesteps, n_features)))
@@ -155,26 +167,23 @@ def lstm_model(output_units,n_timesteps, n_features,batch_size, embedding_vector
     model.fit(x_train, 
               y_train, 
               batch_size=batch_size, 
-              epochs=50, 
+              epochs=100, 
               shuffle=False, 
               validation_data=(x_test, y_test))
 
     score = model.evaluate(x_test, y_test, batch_size=batch_size, verbose=1)
+
     print(score)
 
-# retorna o vetor numerico de uma determinada letra
-def get_word_embedding_vector(lyrics_embedding_vector):
 
-    word_embedding_vector = []
+def main():
+    keyed_vectors = get_word2Vec_model("/home/guimaj/Documentos/tcc/lyrics-vectors.kv") #path contendo o modelo word2vec exportado
+    data = get_all_lyrics_and_melody("/home/guimaj/Documentos/tcc/midi_teste") #path contendo as pastas dos midis extraidos
+    supervised_vectors = get_all_supervised_vectors(data)
+    embedding_vectors  = get_all_embedding_vectors(data,keyed_vectors)
+    lstm_model(3,499,128,1, embedding_vectors, supervised_vectors)
 
-    for embedding_element in lyrics_embedding_vector:
-        word_embedding_vector.append(embedding_element["vector"])
+main()
 
-    return word_embedding_vector
-    
 
-keyed_vectors = get_word2Vec_model("/home/guimaj/Documentos/tcc/lyrics-vectors.kv") #path contendo o modelo word2vec exportado
-data = get_all_lyrics_and_melody("/home/guimaj/Documentos/tcc/midi_teste") #path contendo as pastas dos midis extraidos
-supervised_vectors = get_all_supervised_vectors(data)
-embedding_vectors  = get_all_embedding_vectors(data,keyed_vectors)
-lstm_model(3,6,128,7, embedding_vectors, supervised_vectors)
+
