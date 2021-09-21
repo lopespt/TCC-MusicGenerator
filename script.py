@@ -214,6 +214,7 @@ def get_midi_melody(midi_file, midi_id, file_path):
 
     melody_instrument = midi_file.instruments[get_melody_instrument(midi_file,lyrics)]
     melody_notes = get_midi_notes(melody_instrument)
+    #print(midi_file.time_signature_changes)
     
     midi_melody = dict({
         "midi_id": midi_id,
@@ -225,21 +226,36 @@ def get_midi_melody(midi_file, midi_id, file_path):
     return midi_melody
 
 
-def get_melody_instrument(midi_file, lyrics):
-    instrument_indexes = []
-
+def get_melody_instrument(midi_file,lyrics):
+    x = []
+    y=[]
+    #y pega todos os instrumentos que tocam notas ao mesmo tempo e remove eles do vetor X q possui instrumentos q contem notas no tempo da letra.
     for instrument in midi_file.instruments:
         for j in range(len(instrument.notes)):
             for lyric in lyrics:
-                if instrument.is_drum == False: 
-                    if instrument.notes[j].start >= lyric.time - 0.01 and instrument.notes[j].start <= lyric.time + 0.01:
-                        if j < len(instrument.notes) - 1 and instrument.notes[j].end < instrument.notes[j+1].start:
-                            if instrument.notes[j].start >= instrument.notes[j+1].start - 0.003 and instrument.notes[j].start <= instrument.notes[j+1].start + 0.003:
-                                pass
-                            else:
-                                instrument_indexes.append(midi_file.instruments.index(instrument))
-    
-    return most_frequent(instrument_indexes)
+                #Não é uma bateria
+                if instrument.is_drum == False:
+                    if instrument.program < 118 or instrument.program > 120:
+                        #não é um contrabaixo
+                        if instrument.program < 33 or instrument.program > 40:
+                            if j < len(instrument.notes) -1 and instrument.notes[j].start == instrument.notes[j+1].start and instrument.notes[j].pitch != instrument.notes[j+1].pitch:
+                                y.append(midi_file.instruments.index(instrument))
+                            elif instrument.notes[j].start >= lyric.time -0.005 and instrument.notes[j].start <= lyric.time +0.005:
+                                if j < len(instrument.notes) -1 and instrument.notes[j].end < instrument.notes[j+1].start:
+                                    x.append(midi_file.instruments.index(instrument))
+
+    y = list(set(y))
+
+    #print(x)
+    #print(y)
+
+    for element in y:
+        while element in x:
+            x.remove(element)
+
+    #print(x)
+    return most_frequent(x)
+
 
 def main():
     scores = get_score_file()
